@@ -1,41 +1,31 @@
-import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
-import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+// Desktop app routers - no authentication required
+import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import {
   createProject,
   getProjectById,
-  getProjectsByUserId,
+  getAllProjects,
   updateProject,
   deleteProject,
   createPage,
   getPageById,
-  getPagesByProjectId,
+  getPagesByProject,
   updatePage,
-  updatePageStatus,
+  deletePage,
+  getProjectStats,
+  getPagesByStatus,
+  updatePageOrder,
+  bulkUpdatePageStatus,
 } from "./db";
-import { storagePut } from "./storage";
 import { performOCR, cleanupOCRText } from "./ocrService";
 import { exportDocument, ExportFormat } from "./exportService";
-import { nanoid } from "nanoid";
+import * as fs from "fs";
+import * as path from "path";
 
 export const appRouter = router({
-  system: systemRouter,
-  auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
-    }),
-  }),
-
   projects: router({
     // Create a new project
-    create: protectedProcedure
+    create: publicProcedure
       .input(
         z.object({
           title: z.string().min(1).max(255),
@@ -43,9 +33,8 @@ export const appRouter = router({
           enableCleanup: z.boolean().optional(),
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const project = await createProject({
-          userId: ctx.user.id,
           title: input.title,
           description: input.description,
           enableCleanup: (input.enableCleanup ?? false) ? "yes" : "no",
@@ -53,37 +42,33 @@ export const appRouter = router({
         return project;
       }),
 
-    // Get all projects for current user
-    list: protectedProcedure.query(async ({ ctx }) => {
-      return getProjectsByUserId(ctx.user.id);
+    // Get all projects
+    list: publicProcedure.query(async () => {
+      return getAllProjects();
     }),
 
     // Get a specific project with its pages
-    get: protectedProcedure
+    get: publicProcedure
       .input(z.object({ projectId: z.number() }))
-      .query(async ({ ctx, input }) => {
+      .query(async ({ input }) => {
         const project = await getProjectById(input.projectId);
         if (!project) {
           throw new Error("Project not found");
         }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
 
-        const pages = await getPagesByProjectId(input.projectId);
-        return { project, pages };
+        const pages = await getPagesByProject(input.projectId);
+        const stats = await getProjectStats(input.projectId);
+        
+        return { project, pages, stats };
       }),
 
     // Delete a project
-    delete: protectedProcedure
+    delete: publicProcedure
       .input(z.object({ projectId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const project = await getProjectById(input.projectId);
         if (!project) {
           throw new Error("Project not found");
-        }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
         }
 
         await deleteProject(input.projectId);
@@ -91,9 +76,9 @@ export const appRouter = router({
       }),
 
     // Bulk delete projects
-    bulkDelete: protectedProcedure
+    bulkDelete: publicProcedure
       .input(z.object({ projectIds: z.array(z.number()) }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         let deletedCount = 0;
         const errors: string[] = [];
 
@@ -102,10 +87,6 @@ export const appRouter = router({
             const project = await getProjectById(projectId);
             if (!project) {
               errors.push(`Project ${projectId} not found`);
-              continue;
-            }
-            if (project.userId !== ctx.user.id) {
-              errors.push(`Unauthorized to delete project ${projectId}`);
               continue;
             }
 
@@ -119,42 +100,18 @@ export const appRouter = router({
         return { deletedCount, errors, success: deletedCount > 0 };
       }),
 
-    // Update project status
-    updateStatus: protectedProcedure
-      .input(
-        z.object({
-          projectId: z.number(),
-          status: z.enum(["uploading", "processing", "completed", "failed"]),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const project = await getProjectById(input.projectId);
-        if (!project) {
-          throw new Error("Project not found");
-        }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
-
-        await updateProject(input.projectId, { status: input.status });
-        return { success: true };
-      }),
-
     // Update project settings (cleanup toggle, etc.)
-    updateSettings: protectedProcedure
+    updateSettings: publicProcedure
       .input(
         z.object({
           projectId: z.number(),
           enableCleanup: z.enum(["yes", "no"]).optional(),
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const project = await getProjectById(input.projectId);
         if (!project) {
           throw new Error("Project not found");
-        }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
         }
 
         const updates: any = {};
@@ -167,26 +124,23 @@ export const appRouter = router({
       }),
 
     // Preview cleanup effect on a sample page
-    previewCleanup: protectedProcedure
+    previewCleanup: publicProcedure
       .input(
         z.object({
           projectId: z.number(),
         })
       )
-      .query(async ({ ctx, input }) => {
+      .query(async ({ input }) => {
         const { projectId } = input;
 
-        // Get the project and verify ownership
+        // Get the project
         const project = await getProjectById(projectId);
         if (!project) {
           throw new Error("Project not found");
         }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
 
         // Get a sample completed page (first one)
-        const pages = await getPagesByProjectId(projectId);
+        const pages = await getPagesByProject(projectId);
         const completedPage = pages.find(p => p.status === "completed" && p.extractedText);
 
         if (!completedPage || !completedPage.extractedText) {
@@ -203,7 +157,7 @@ export const appRouter = router({
           hasPreview: true,
           originalText,
           cleanedText,
-          pageNumber: completedPage.detectedPageNumber || completedPage.sortOrder,
+          pageNumber: completedPage.detectedPageNumber || completedPage.sortOrder?.toString(),
           filename: completedPage.filename,
         };
       }),
@@ -211,53 +165,46 @@ export const appRouter = router({
 
   pages: router({
     // Upload a page image and create page record
-    upload: protectedProcedure
+    upload: publicProcedure
       .input(
         z.object({
           projectId: z.number(),
           filename: z.string(),
-          imageData: z.string(), // Base64 encoded image
-          mimeType: z.string(),
+          filePath: z.string(), // Local file path for desktop app
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const project = await getProjectById(input.projectId);
         if (!project) {
           throw new Error("Project not found");
         }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
+
+        // For desktop app, store files locally in data/uploads directory
+        const uploadsDir = path.join(process.cwd(), "data", "uploads", input.projectId.toString());
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
         }
 
-        // Convert base64 to buffer
-        const base64Data = input.imageData.split(",")[1] || input.imageData;
-        const buffer = Buffer.from(base64Data, "base64");
-
-        // Upload to S3
-        const fileKey = `projects/${input.projectId}/pages/${nanoid()}-${input.filename}`;
-        const { url } = await storagePut(fileKey, buffer, input.mimeType);
+        // Copy file to uploads directory
+        const destPath = path.join(uploadsDir, input.filename);
+        fs.copyFileSync(input.filePath, destPath);
 
         // Create page record
         const page = await createPage({
           projectId: input.projectId,
           filename: input.filename,
-          imageKey: fileKey,
-          imageUrl: url,
+          imageKey: destPath, // Store local path
+          imageUrl: `file://${destPath}`, // Use file:// protocol for local files
           status: "pending",
-        });
-
-        // Update project total pages count
-        await updateProject(input.projectId, {
-          totalPages: project.totalPages + 1,
         });
 
         return page;
       }),
 
     // Process OCR for a page
-    processOCR: protectedProcedure
+    processOCR: publicProcedure
       .input(z.object({ pageId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const page = await getPageById(input.pageId);
         
         if (!page) {
@@ -265,15 +212,15 @@ export const appRouter = router({
         }
 
         const project = await getProjectById(page.projectId);
-        if (!project || project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
+        if (!project) {
+          throw new Error("Project not found");
         }
 
         try {
           // Update status to processing
-          await updatePageStatus(input.pageId, "processing");
+          await updatePage(input.pageId, { status: "processing" });
 
-          // Perform OCR
+          // Perform OCR (imageUrl contains local file path with file:// protocol)
           const ocrResult = await performOCR(page.imageUrl);
 
           // Apply cleanup if enabled for this project
@@ -286,13 +233,8 @@ export const appRouter = router({
             extractedText,
             detectedPageNumber: ocrResult.detectedPageNumber,
             formattingData: ocrResult.formattingData as any,
-            confidenceScore: Math.round(ocrResult.confidence * 100), // Convert 0-1 to 0-100
+            confidenceScore: ocrResult.confidence,
             status: "completed",
-          });
-
-          // Update project processed pages count
-          await updateProject(page.projectId, {
-            processedPages: project.processedPages + 1,
           });
 
           return {
@@ -301,57 +243,42 @@ export const appRouter = router({
           };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "OCR processing failed";
-          await updatePageStatus(input.pageId, "failed", errorMessage);
+          await updatePage(input.pageId, {
+            status: "failed",
+            errorMessage,
+          });
           throw error;
         }
       }),
 
     // Reorder pages based on detected page numbers
-    reorder: protectedProcedure
+    reorder: publicProcedure
       .input(z.object({ projectId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const project = await getProjectById(input.projectId);
         if (!project) {
           throw new Error("Project not found");
         }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
 
-        const pages = await getPagesByProjectId(input.projectId);
-
+        const pages = await getPagesByProject(input.projectId);
+        
         // Sort pages by detected page number
-        const sortedPages = [...pages].sort((a, b) => {
-          // Pages with detected numbers come first
-          if (a.detectedPageNumber && !b.detectedPageNumber) return -1;
-          if (!a.detectedPageNumber && b.detectedPageNumber) return 1;
-          if (!a.detectedPageNumber && !b.detectedPageNumber) {
-            // If neither has page number, sort by upload order (id)
-            return a.id - b.id;
-          }
-
-          // Both have page numbers - extract numeric values
-          const aNum = parseInt(a.detectedPageNumber!, 10);
-          const bNum = parseInt(b.detectedPageNumber!, 10);
-
-          if (!isNaN(aNum) && !isNaN(bNum)) {
-            return aNum - bNum;
-          }
-
-          // Fallback to string comparison
-          return a.detectedPageNumber!.localeCompare(b.detectedPageNumber!);
+        const sortedPages = pages.sort((a, b) => {
+          const aNum = parseInt(a.detectedPageNumber || "0");
+          const bNum = parseInt(b.detectedPageNumber || "0");
+          return aNum - bNum;
         });
 
-        // Update sort order for each page
+        // Update sort order
         for (let i = 0; i < sortedPages.length; i++) {
-          await updatePage(sortedPages[i].id, { sortOrder: i });
+          await updatePageOrder(sortedPages[i].id, i);
         }
 
-        return { success: true };
+        return { success: true, reorderedCount: sortedPages.length };
       }),
 
-    // Manual reorder - update sort order for specific pages
-    updateOrder: protectedProcedure
+    // Manual reorder (drag and drop)
+    manualReorder: publicProcedure
       .input(
         z.object({
           projectId: z.number(),
@@ -363,213 +290,31 @@ export const appRouter = router({
           ),
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const project = await getProjectById(input.projectId);
         if (!project) {
           throw new Error("Project not found");
         }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
 
-        // Update each page's sort order
         for (const { pageId, sortOrder } of input.pageOrders) {
-          await updatePage(pageId, { sortOrder });
+          await updatePageOrder(pageId, sortOrder);
         }
 
         return { success: true };
       }),
 
-    // Retry all failed pages in a project
-    retryFailed: protectedProcedure
-      .input(z.object({ projectId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        const project = await getProjectById(input.projectId);
-        if (!project) {
-          throw new Error("Project not found");
-        }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
-
-        const pages = await getPagesByProjectId(input.projectId);
-        const failedPages = pages.filter(p => p.status === "failed");
-
-        if (failedPages.length === 0) {
-          return { success: true, retriedCount: 0, results: [] };
-        }
-
-        const results: Array<{ pageId: number; success: boolean; error?: string }> = [];
-
-        for (const page of failedPages) {
-          try {
-            // Reset status to processing
-            await updatePageStatus(page.id, "processing");
-
-            // Perform OCR
-            const ocrResult = await performOCR(page.imageUrl);
-
-            // Update page with OCR results
-            await updatePage(page.id, {
-              extractedText: ocrResult.extractedText,
-              detectedPageNumber: ocrResult.detectedPageNumber,
-              formattingData: ocrResult.formattingData as any,
-              status: "completed",
-              errorMessage: null,
-            });
-
-            results.push({ pageId: page.id, success: true });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "OCR processing failed";
-            await updatePage(page.id, {
-              status: "failed",
-              errorMessage,
-            });
-            results.push({ pageId: page.id, success: false, error: errorMessage });
-          }
-        }
-
-        // Update project processed pages count
-        const successCount = results.filter(r => r.success).length;
-        if (successCount > 0) {
-          await updateProject(input.projectId, {
-            processedPages: project.processedPages + successCount,
-          });
-        }
-
-        return {
-          success: true,
-          retriedCount: failedPages.length,
-          successCount,
-          results,
-        };
-      }),
-
-    // Reprocess a page (even if completed) to fix extraction issues
-    reprocessPage: protectedProcedure
-      .input(z.object({ pageId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        const page = await getPageById(input.pageId);
-        if (!page) {
-          throw new Error("Page not found");
-        }
-
-        const project = await getProjectById(page.projectId);
-        if (!project || project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
-
-        try {
-          // Reset status to processing
-          await updatePageStatus(input.pageId, "processing");
-
-          // Perform OCR with improved extraction
-          const ocrResult = await performOCR(page.imageUrl);
-
-          // Apply cleanup if enabled for this project
-          const extractedText = project.enableCleanup === 'yes' 
-            ? cleanupOCRText(ocrResult.extractedText)
-            : ocrResult.extractedText;
-
-          // Update page with new OCR results
-          await updatePage(input.pageId, {
-            extractedText,
-            detectedPageNumber: ocrResult.detectedPageNumber,
-            formattingData: ocrResult.formattingData as any,
-            status: "completed",
-            errorMessage: null,
-          });
-
-          return {
-            success: true,
-            pageNumber: ocrResult.detectedPageNumber,
-            extractedText,
-          };
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "OCR processing failed";
-          await updatePage(input.pageId, {
-            status: "failed",
-            errorMessage,
-          });
-          throw new Error(errorMessage);
-        }
-      }),
-
-    // Retry a single failed page
-    retrySingle: protectedProcedure
-      .input(z.object({ pageId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        const page = await getPageById(input.pageId);
-        if (!page) {
-          throw new Error("Page not found");
-        }
-
-        const project = await getProjectById(page.projectId);
-        if (!project || project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
-
-        if (page.status !== "failed" && page.status !== "pending") {
-          throw new Error("Only failed or pending pages can be processed");
-        }
-
-        try {
-          // Reset status to processing
-          await updatePageStatus(input.pageId, "processing");
-
-          // Perform OCR
-          const ocrResult = await performOCR(page.imageUrl);
-
-          // Apply cleanup if enabled for this project
-          const extractedText = project.enableCleanup === 'yes' 
-            ? cleanupOCRText(ocrResult.extractedText)
-            : ocrResult.extractedText;
-
-          // Update page with OCR results
-          await updatePage(input.pageId, {
-            extractedText,
-            detectedPageNumber: ocrResult.detectedPageNumber,
-            formattingData: ocrResult.formattingData as any,
-            status: "completed",
-            errorMessage: null,
-          });
-
-          // Update project processed pages count
-          await updateProject(page.projectId, {
-            processedPages: project.processedPages + 1,
-          });
-
-          return {
-            success: true,
-            pageNumber: ocrResult.detectedPageNumber,
-          };
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "OCR processing failed";
-          await updatePage(input.pageId, {
-            status: "failed",
-            errorMessage,
-          });
-          throw new Error(errorMessage);
-        }
-      }),
-
-    // Update extracted text for a page
-    updateText: protectedProcedure
+    // Update page text (manual editing)
+    updateText: publicProcedure
       .input(
         z.object({
           pageId: z.number(),
           extractedText: z.string(),
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const page = await getPageById(input.pageId);
         if (!page) {
           throw new Error("Page not found");
-        }
-
-        const project = await getProjectById(page.projectId);
-        if (!project || project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
         }
 
         await updatePage(input.pageId, {
@@ -579,239 +324,136 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Add additional pages to existing project with intelligent placement
-    addPages: protectedProcedure
-      .input(
-        z.object({
-          projectId: z.number(),
-          pages: z.array(
-            z.object({
-              filename: z.string(),
-              imageData: z.string(), // Base64 encoded image
-              mimeType: z.string(),
-            })
-          ),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const project = await getProjectById(input.projectId);
-        if (!project) {
-          throw new Error("Project not found");
-        }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
+    // Delete a page
+    delete: publicProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input }) => {
+        const page = await getPageById(input.pageId);
+        if (!page) {
+          throw new Error("Page not found");
         }
 
-        const { determinePlacement, reorderPages } = await import("./placementService");
-        const existingPages = await getPagesByProjectId(input.projectId);
-        const results = [];
-
-        for (const pageData of input.pages) {
-          try {
-            // Convert base64 to buffer
-            const base64Data = pageData.imageData.split(",")[1] || pageData.imageData;
-            const buffer = Buffer.from(base64Data, "base64");
-
-            // Upload to S3
-            const fileKey = `projects/${input.projectId}/pages/${nanoid()}-${pageData.filename}`;
-            const { url } = await storagePut(fileKey, buffer, pageData.mimeType);
-
-            // Perform OCR first to detect page number
-            const ocrResult = await performOCR(url);
-
-            // Apply cleanup if enabled for this project
-            const extractedText = project.enableCleanup === 'yes' 
-              ? cleanupOCRText(ocrResult.extractedText)
-              : ocrResult.extractedText;
-
-            // Determine placement
-            const placement = determinePlacement(
-              ocrResult.detectedPageNumber,
-              pageData.filename,
-              existingPages.map(p => ({
-                id: p.id,
-                sortOrder: p.sortOrder,
-                detectedPageNumber: p.detectedPageNumber,
-                filename: p.filename,
-              }))
-            );
-
-            // Create page record with placement info
-            const page = await createPage({
-              projectId: input.projectId,
-              filename: pageData.filename,
-              imageKey: fileKey,
-              imageUrl: url,
-              status: "completed",
-              extractedText,
-              detectedPageNumber: ocrResult.detectedPageNumber,
-              formattingData: ocrResult.formattingData as any,
-              confidenceScore: Math.round(ocrResult.confidence * 100),
-              sortOrder: Math.floor(placement.sortOrder),
-              placementConfidence: placement.confidence,
-              needsValidation: placement.needsValidation,
-            });
-
-            // Reorder existing pages if needed
-            const updates = reorderPages(
-              existingPages.map(p => ({
-                id: p.id,
-                sortOrder: p.sortOrder,
-                detectedPageNumber: p.detectedPageNumber,
-                filename: p.filename,
-              })),
-              placement.sortOrder
-            );
-
-            for (const [pageId, newOrder] of Array.from(updates.entries())) {
-              await updatePage(pageId, { sortOrder: newOrder });
-            }
-
-            results.push({
-              filename: pageData.filename,
-              success: true,
-              pageId: page.id,
-              sortOrder: placement.sortOrder,
-              confidence: placement.confidence,
-              needsValidation: placement.needsValidation,
-              reason: placement.reason,
-            });
-          } catch (error) {
-            results.push({
-              filename: pageData.filename,
-              success: false,
-              error: error instanceof Error ? error.message : "Upload failed",
-            });
+        // Delete local file
+        try {
+          const filePath = page.imageUrl.replace('file://', '');
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
           }
+        } catch (error) {
+          console.warn(`Failed to delete file: ${error}`);
         }
 
-        return {
-          success: true,
-          results,
-        };
+        await deletePage(input.pageId);
+        return { success: true };
       }),
 
-    // Manually reorder pages by dragging
-    reorderManual: protectedProcedure
-      .input(
-        z.object({
-          projectId: z.number(),
-          pageIds: z.array(z.number()),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const project = await getProjectById(input.projectId);
-        if (!project) {
-          throw new Error("Project not found");
-        }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
+    // Retry failed pages
+    retryFailed: publicProcedure
+      .input(z.object({ projectId: z.number() }))
+      .mutation(async ({ input }) => {
+        const failedPages = await getPagesByStatus(input.projectId, "failed");
+        
+        await bulkUpdatePageStatus(
+          failedPages.map(p => p.id),
+          "pending",
+          undefined
+        );
+
+        return { success: true, retriedCount: failedPages.length };
+      }),
+
+    // Retry single page
+    retrySingle: publicProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input }) => {
+        const page = await getPageById(input.pageId);
+        if (!page) {
+          throw new Error("Page not found");
         }
 
-        // Update sort order for each page
-        for (let i = 0; i < input.pageIds.length; i++) {
-          await updatePage(input.pageIds[i]!, {
-            sortOrder: i,
-          });
+        if (page.status !== "failed" && page.status !== "pending") {
+          throw new Error("Only failed or pending pages can be retried");
         }
+
+        await updatePage(input.pageId, {
+          status: "pending",
+          errorMessage: null,
+        });
+
+        return { success: true };
+      }),
+
+    // Reprocess completed page (for improved OCR)
+    reprocessPage: publicProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input }) => {
+        const page = await getPageById(input.pageId);
+        if (!page) {
+          throw new Error("Page not found");
+        }
+
+        // Reset page to pending for reprocessing
+        await updatePage(input.pageId, {
+          status: "pending",
+          extractedText: null,
+          detectedPageNumber: null,
+          formattingData: null,
+          confidenceScore: null,
+          errorMessage: null,
+        });
 
         return { success: true };
       }),
   }),
 
   export: router({
-    // Preview first 3 pages in selected format
-    preview: protectedProcedure
-      .input(
-        z.object({
-          projectId: z.number(),
-          format: z.enum(["md", "txt"]),
-        })
-      )
-      .query(async ({ ctx, input }) => {
-        const project = await getProjectById(input.projectId);
-        if (!project) {
-          throw new Error("Project not found");
-        }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
-
-        const pages = await getPagesByProjectId(input.projectId);
-        
-        // Filter only completed pages and take first 3
-        const completedPages = pages
-          .filter(p => p.status === "completed")
-          .slice(0, 3);
-        
-        if (completedPages.length === 0) {
-          throw new Error("No completed pages to preview");
-        }
-
-        const result = await exportDocument(completedPages, input.format as ExportFormat);
-        
-        // Return as string for preview
-        const previewText = Buffer.isBuffer(result) 
-          ? result.toString("utf-8")
-          : result;
-        
-        return {
-          preview: previewText,
-          pageCount: completedPages.length,
-          totalPages: pages.filter(p => p.status === "completed").length,
-        };
-      }),
-
     // Export project to specified format
-    generate: protectedProcedure
+    generate: publicProcedure
       .input(
         z.object({
           projectId: z.number(),
-          format: z.enum(["md", "txt", "pdf", "docx"]),
+          format: z.enum(["pdf", "docx", "txt", "markdown"]),
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const project = await getProjectById(input.projectId);
         if (!project) {
           throw new Error("Project not found");
         }
-        if (project.userId !== ctx.user.id) {
-          throw new Error("Unauthorized");
-        }
 
-        const pages = await getPagesByProjectId(input.projectId);
-        
-        // Filter only completed pages
-        const completedPages = pages.filter(p => p.status === "completed");
-        
+        const pages = await getPagesByProject(input.projectId);
+        const completedPages = pages
+          .filter(p => p.status === "completed" && p.extractedText)
+          .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
         if (completedPages.length === 0) {
           throw new Error("No completed pages to export");
         }
 
-        const result = await exportDocument(completedPages, input.format as ExportFormat);
-        
-        // Convert to base64 for transmission
-        const base64 = Buffer.isBuffer(result) 
-          ? result.toString("base64")
-          : Buffer.from(result).toString("base64");
-        
+        // Generate export file
+        const buffer = await exportDocument(
+          completedPages,
+          input.format as ExportFormat,
+          project.title
+        );
+
+        // Save to exports directory
+        const exportsDir = path.join(process.cwd(), "data", "exports");
+        if (!fs.existsSync(exportsDir)) {
+          fs.mkdirSync(exportsDir, { recursive: true });
+        }
+
+        const filename = `${project.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.${input.format}`;
+        const filePath = path.join(exportsDir, filename);
+        fs.writeFileSync(filePath, buffer);
+
         return {
-          data: base64,
-          filename: `${project.title}.${input.format}`,
-          mimeType: getMimeType(input.format),
+          success: true,
+          filePath,
+          filename,
         };
       }),
   }),
 });
-
-function getMimeType(format: string): string {
-  const mimeTypes: Record<string, string> = {
-    md: "text/markdown",
-    txt: "text/plain",
-    pdf: "application/pdf",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  };
-  return mimeTypes[format] || "application/octet-stream";
-}
 
 export type AppRouter = typeof appRouter;

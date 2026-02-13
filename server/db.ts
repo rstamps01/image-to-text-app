@@ -1,239 +1,168 @@
-import { eq, desc, and } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, projects, pages, InsertProject, InsertPage, Project, Page } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { eq, desc, and, sql } from "drizzle-orm";
+import { drizzle, BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
+import { projects, pages, InsertProject, InsertPage, Project, Page } from "../drizzle/schema";
+import * as fs from "fs";
+import * as path from "path";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: BetterSQLite3Database | null = null;
+let _sqlite: Database.Database | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
+// Ensure data directory exists
+const dataDir = path.join(process.cwd(), "data");
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+const dbPath = path.join(dataDir, "book-converter.db");
+
+// Initialize SQLite database
+export function getDb(): BetterSQLite3Database {
+  if (!_db) {
+    _sqlite = new Database(dbPath);
+    _db = drizzle(_sqlite);
+    console.log(`[Database] Connected to SQLite at ${dbPath}`);
   }
   return _db;
 }
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
-
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
-
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
+// Close database connection (for cleanup)
+export function closeDb() {
+  if (_sqlite) {
+    _sqlite.close();
+    _sqlite = null;
+    _db = null;
+    console.log("[Database] Database connection closed");
   }
 }
 
-export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
+// ============================================================================
+// Project Operations
+// ============================================================================
 
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
-}
-
-// Project helpers
 export async function createProject(data: InsertProject): Promise<Project> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  const result = await db.insert(projects).values(data);
-  const insertId = Number(result[0].insertId);
-  
-  const created = await db.select().from(projects).where(eq(projects.id, insertId)).limit(1);
-  if (!created[0]) {
-    throw new Error("Failed to retrieve created project");
-  }
-  
-  return created[0];
+  const db = getDb();
+  const result = db.insert(projects).values(data).returning().get();
+  return result;
 }
 
-export async function getProjectById(projectId: number): Promise<Project | undefined> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  const result = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
-  return result[0];
+export async function getProjectById(id: number): Promise<Project | undefined> {
+  const db = getDb();
+  return db.select().from(projects).where(eq(projects.id, id)).get();
 }
 
-export async function getProjectsByUserId(userId: number): Promise<Project[]> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(desc(projects.createdAt));
+export async function getAllProjects(): Promise<Project[]> {
+  const db = getDb();
+  return db.select().from(projects).orderBy(desc(projects.createdAt)).all();
 }
 
-export async function updateProject(projectId: number, data: Partial<InsertProject>): Promise<void> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  await db.update(projects).set(data).where(eq(projects.id, projectId));
+export async function updateProject(id: number, data: Partial<InsertProject>): Promise<void> {
+  const db = getDb();
+  db.update(projects)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(projects.id, id))
+    .run();
 }
 
-export async function deleteProject(projectId: number): Promise<void> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
+export async function deleteProject(id: number): Promise<void> {
+  const db = getDb();
   // Delete all pages first
-  await db.delete(pages).where(eq(pages.projectId, projectId));
+  db.delete(pages).where(eq(pages.projectId, id)).run();
   // Then delete the project
-  await db.delete(projects).where(eq(projects.id, projectId));
+  db.delete(projects).where(eq(projects.id, id)).run();
 }
 
-// Page helpers
+export async function getProjectStats(projectId: number) {
+  const db = getDb();
+  
+  const stats = db
+    .select({
+      total: sql<number>`count(*)`,
+      completed: sql<number>`sum(case when ${pages.status} = 'completed' then 1 else 0 end)`,
+      processing: sql<number>`sum(case when ${pages.status} = 'processing' then 1 else 0 end)`,
+      failed: sql<number>`sum(case when ${pages.status} = 'failed' then 1 else 0 end)`,
+    })
+    .from(pages)
+    .where(eq(pages.projectId, projectId))
+    .get();
+
+  return {
+    total: Number(stats?.total || 0),
+    completed: Number(stats?.completed || 0),
+    processing: Number(stats?.processing || 0),
+    failed: Number(stats?.failed || 0),
+  };
+}
+
+// ============================================================================
+// Page Operations
+// ============================================================================
+
 export async function createPage(data: InsertPage): Promise<Page> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  const result = await db.insert(pages).values(data);
-  const insertId = Number(result[0].insertId);
-  
-  const created = await db.select().from(pages).where(eq(pages.id, insertId)).limit(1);
-  if (!created[0]) {
-    throw new Error("Failed to retrieve created page");
-  }
-  
-  // Update project counts
-  await updateProjectPageCounts(data.projectId);
-  
-  return created[0];
+  const db = getDb();
+  const result = db.insert(pages).values(data).returning().get();
+  return result;
 }
 
-export async function getPageById(pageId: number): Promise<Page | undefined> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  const result = await db.select().from(pages).where(eq(pages.id, pageId)).limit(1);
-  return result[0];
+export async function getPageById(id: number): Promise<Page | undefined> {
+  const db = getDb();
+  return db.select().from(pages).where(eq(pages.id, id)).get();
 }
 
-export async function getPagesByProjectId(projectId: number): Promise<Page[]> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  return db.select().from(pages).where(eq(pages.projectId, projectId)).orderBy(pages.sortOrder);
+export async function getPagesByProject(projectId: number): Promise<Page[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(pages)
+    .where(eq(pages.projectId, projectId))
+    .orderBy(pages.sortOrder, pages.id)
+    .all();
 }
 
-export async function updatePage(pageId: number, data: Partial<InsertPage>): Promise<void> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  await db.update(pages).set(data).where(eq(pages.id, pageId));
+export async function updatePage(id: number, data: Partial<InsertPage>): Promise<void> {
+  const db = getDb();
+  db.update(pages)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(pages.id, id))
+    .run();
 }
 
-export async function deletePage(pageId: number): Promise<void> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  await db.delete(pages).where(eq(pages.id, pageId));
+export async function deletePage(id: number): Promise<void> {
+  const db = getDb();
+  db.delete(pages).where(eq(pages.id, id)).run();
 }
 
-export async function updatePageStatus(pageId: number, status: "pending" | "processing" | "completed" | "failed", errorMessage?: string): Promise<void> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  const updateData: Partial<InsertPage> = { status };
-  if (errorMessage) {
-    updateData.errorMessage = errorMessage;
-  }
-
-  await db.update(pages).set(updateData).where(eq(pages.id, pageId));
-  
-  // Update project counts
-  const page = await getPageById(pageId);
-  if (page) {
-    await updateProjectPageCounts(page.projectId);
-  }
+export async function getPagesByStatus(projectId: number, status: string): Promise<Page[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(pages)
+    .where(and(eq(pages.projectId, projectId), eq(pages.status, status)))
+    .all();
 }
 
-export async function updateProjectPageCounts(projectId: number): Promise<void> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
+export async function updatePageOrder(pageId: number, newSortOrder: number): Promise<void> {
+  const db = getDb();
+  db.update(pages)
+    .set({ sortOrder: newSortOrder, updatedAt: new Date() })
+    .where(eq(pages.id, pageId))
+    .run();
+}
+
+export async function bulkUpdatePageStatus(
+  pageIds: number[],
+  status: string,
+  errorMessage?: string
+): Promise<void> {
+  const db = getDb();
+  for (const pageId of pageIds) {
+    db.update(pages)
+      .set({
+        status: status as any,
+        errorMessage,
+        updatedAt: new Date(),
+      })
+      .where(eq(pages.id, pageId))
+      .run();
   }
-
-  const allPages = await db.select().from(pages).where(eq(pages.projectId, projectId));
-  const totalPages = allPages.length;
-  const processedPages = allPages.filter(p => p.status === "completed").length;
-
-  await db.update(projects).set({ totalPages, processedPages }).where(eq(projects.id, projectId));
 }

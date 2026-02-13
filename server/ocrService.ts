@@ -1,4 +1,6 @@
-import { invokeLLM } from "./_core/llm";
+import { spawn } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
 
 export interface FormattingBlock {
   type: 'paragraph' | 'heading' | 'list' | 'quote';
@@ -78,25 +80,22 @@ export function cleanupOCRText(text: string): string {
   cleaned = cleaned.replace(/\b[^aAiI\s\d.,;:!?()\[\]{}"'\-\/—]\b/g, '');
   
   // Fix inconsistent spacing after periods
-  // Ensure single space after period followed by capital letter (sentence boundary)
-  cleaned = cleaned.replace(/\.  +([A-Z])/g, '. $1');
+  // Ensure single space after periods (but not in abbreviations like "U.S.")
+  cleaned = cleaned.replace(/\.([A-Z])/g, '. $1');
   
-  // Fix spacing around colons (no space before, one space after)
-  cleaned = cleaned.replace(/ +:( *)/g, ':$1');
+  // Fix colon spacing (no space before, single space after)
+  cleaned = cleaned.replace(/ +:/g, ':');
   cleaned = cleaned.replace(/:([A-Za-z])/g, ': $1');
   
-  // Clean up multiple consecutive line breaks (preserve paragraph breaks)
-  cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n');
+  // Remove excessive line breaks (3+ consecutive newlines → 2 newlines)
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
   
-  // Fix inconsistent line breaks in the middle of sentences
-  // Join lines that end with lowercase and next line starts with lowercase
+  // Join lines that were incorrectly split mid-sentence
+  // Look for line ending without punctuation followed by lowercase start
   cleaned = cleaned.replace(/([a-z,])\n([a-z])/g, '$1 $2');
-
-  // Remove trailing spaces at end of lines
-  cleaned = cleaned.replace(/ +$/gm, '');
   
-  // Remove leading/trailing blank lines (but preserve internal structure)
-  cleaned = cleaned.replace(/^\n+/, '').replace(/\n+$/, '');
+  // Remove trailing spaces at end of lines
+  cleaned = cleaned.split('\n').map(line => line.trimEnd()).join('\n');
   
   // Remove leading spaces at start of lines (1-3 spaces only, preserve 4+ for indentation)
   // This preserves intentional indentation while removing accidental leading spaces  
@@ -201,160 +200,99 @@ function parseTextIntoBlocks(text: string): FormattingBlock[] {
 }
 
 /**
- * Converts Roman numerals to Arabic numbers
+ * Calls Python PaddleOCR service to extract text from image
  */
-function romanToArabic(roman: string): number | null {
-  const romanMap: Record<string, number> = {
-    I: 1,
-    V: 5,
-    X: 10,
-    L: 50,
-    C: 100,
-    D: 500,
-    M: 1000,
-  };
-
-  let result = 0;
-  for (let i = 0; i < roman.length; i++) {
-    const current = romanMap[roman[i]];
-    const next = romanMap[roman[i + 1]];
-
-    if (next && current < next) {
-      result -= current;
-    } else {
-      result += current;
+async function callPythonOCR(imagePath: string): Promise<{
+  text: string;
+  confidence: number;
+  pageNumber: string | null;
+}> {
+  return new Promise((resolve, reject) => {
+    // Path to Python OCR service
+    const scriptPath = path.join(process.cwd(), 'electron', 'ocr-service.py');
+    
+    // Check if script exists
+    if (!fs.existsSync(scriptPath)) {
+      reject(new Error(`OCR service script not found: ${scriptPath}`));
+      return;
     }
-  }
-
-  return result;
-}
-
-/**
- * Extracts page number from text using LLM
- */
-async function extractPageNumber(text: string): Promise<string | null> {
-  try {
-    const response = await invokeLLM({
-      messages: [
-        {
-          role: "system",
-          content: `You are a page number detector. Extract the page number from the given text.
-Look for:
-- Arabic numerals (1, 2, 3, etc.)
-- Roman numerals (i, ii, iii, iv, v, etc. or I, II, III, IV, V, etc.)
-- Page indicators like "Page 5" or "- 5 -"
-
-Return ONLY the page number (e.g., "5" or "iii" or "IV"). If no page number is found, return "null".`,
-        },
-        {
-          role: "user",
-          content: text,
-        },
-      ],
+    
+    // Check if image exists
+    if (!fs.existsSync(imagePath)) {
+      reject(new Error(`Image file not found: ${imagePath}`));
+      return;
+    }
+    
+    // Spawn Python process
+    const python = spawn('python3', [scriptPath, imagePath, '--json']);
+    
+    let stdout = '';
+    let stderr = '';
+    
+    python.stdout.on('data', (data) => {
+      stdout += data.toString();
     });
-
-    const content = response.choices[0]?.message?.content;
-    const pageNumber = typeof content === 'string' ? content.trim() : null;
-    return pageNumber === "null" ? null : pageNumber;
-  } catch (error) {
-    console.error("[OCR] Failed to extract page number:", error);
-    return null;
-  }
+    
+    python.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    python.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`OCR process failed with code ${code}: ${stderr}`));
+        return;
+      }
+      
+      try {
+        const result = JSON.parse(stdout);
+        
+        if (!result.success) {
+          reject(new Error(result.error || 'OCR processing failed'));
+          return;
+        }
+        
+        resolve({
+          text: result.text || '',
+          confidence: result.confidence || 0,
+          pageNumber: result.page_number || null,
+        });
+      } catch (error) {
+        reject(new Error(`Failed to parse OCR result: ${error}`));
+      }
+    });
+    
+    python.on('error', (error) => {
+      reject(new Error(`Failed to spawn Python process: ${error.message}`));
+    });
+  });
 }
 
 /**
- * Performs OCR on an image using vision LLM
+ * Performs OCR on an image using local PaddleOCR
+ * @param imagePathOrUrl - Local file path to the image
  */
-export async function performOCR(imageUrl: string): Promise<OCRResult> {
-  const maxRetries = 3;
-  const baseDelay = 1000; // 1 second
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await invokeLLM({
-        messages: [
-          {
-            role: "system",
-            content: `You are an OCR system that extracts text from book page images with high accuracy.
-
-CRITICAL EXTRACTION RULES:
-1. Extract EVERY SINGLE LINE of text visible in the image - do not skip or truncate
-2. For Table of Contents pages: Extract ALL sections from top to bottom, not just the first few
-3. Continue extraction until you reach the bottom of the visible page
-4. If you see "Section 3.17" through "Section 4.12", extract ALL of them, not just 3.17-3.19
-
-FORMATTING RULES:
-1. Preserve the EXACT line-by-line structure of the original image
-2. Each line in your output must start and end with the SAME words as in the image
-3. Maintain all indentation, spacing, and paragraph breaks EXACTLY as shown
-4. Do NOT add or remove line breaks - match the image precisely
-5. Preserve justified text alignment and spacing between words
-
-SPECIAL HANDLING:
-- Table of Contents: Recognize the structure with section titles and page numbers
-- DO NOT include dotted leaders (....) between titles and page numbers
-- Extract ALL section titles and their corresponding page numbers (not just the first few)
-- Preserve the hierarchical indentation of sections and subsections
-- Continue extracting until the end of the page
-
-OUTPUT FORMAT:
-- Return ONLY the extracted text
-- Maintain exact line breaks and indentation from the image
-- Do not add explanations, metadata, or formatting markers
-- Each line should mirror the original image's line structure
-- Extract the COMPLETE page content from top to bottom`,
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageUrl,
-                  detail: "high",
-                },
-              },
-            ],
-          },
-        ],
-      });
-
-      const extractedText = typeof response.choices[0]?.message?.content === 'string' 
-        ? response.choices[0].message.content 
-        : "";
-      const confidence = 0.98; // High confidence for LLM-based OCR
-
-      // Extract page number
-      const detectedPageNumber = await extractPageNumber(extractedText);
-
-      // Parse text into structured blocks
-      const blocks = parseTextIntoBlocks(extractedText);
-
-      return {
-        extractedText,
-        detectedPageNumber,
-        formattingData: {
-          blocks,
-        },
-        confidence,
-      };
-    } catch (error: any) {
-      const isUpstreamError = error?.message?.includes("upstream") || 
-                              error?.message?.includes("502") || 
-                              error?.message?.includes("503") ||
-                              error?.message?.includes("504");
-
-      if (isUpstreamError && attempt < maxRetries) {
-        const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
-        console.log(`[OCR] Retry attempt ${attempt}/${maxRetries} after ${delay}ms due to upstream error`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-
-      console.error("[OCR] Failed to perform OCR:", error);
-      throw new Error(`OCR processing failed: ${error.message}`);
-    }
+export async function performOCR(imagePathOrUrl: string): Promise<OCRResult> {
+  try {
+    // For desktop app, imagePathOrUrl is a local file path
+    const imagePath = imagePathOrUrl.replace('file://', '');
+    
+    // Call Python OCR service
+    const ocrResult = await callPythonOCR(imagePath);
+    
+    // Clean up the extracted text
+    const cleanedText = cleanupOCRText(ocrResult.text);
+    
+    // Parse text into formatting blocks
+    const blocks = parseTextIntoBlocks(cleanedText);
+    
+    return {
+      extractedText: cleanedText,
+      detectedPageNumber: ocrResult.pageNumber,
+      formattingData: { blocks },
+      confidence: ocrResult.confidence,
+    };
+  } catch (error) {
+    console.error('[OCR] Error processing image:', error);
+    throw new Error(`OCR processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  throw new Error("OCR processing failed after maximum retries");
 }

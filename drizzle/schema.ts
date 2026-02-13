@@ -1,46 +1,21 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json } from "drizzle-orm/mysql-core";
-
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
-export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
-
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
 /**
  * Projects table - represents a document conversion project
  * Each project contains multiple book page images to be converted
+ * Note: User authentication removed for desktop app - single user mode
  */
-export const projects = mysqlTable("projects", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
+export const projects = sqliteTable("projects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
   description: text("description"),
-  status: mysqlEnum("status", ["uploading", "processing", "completed", "failed"]).default("uploading").notNull(),
-  totalPages: int("totalPages").default(0).notNull(),
-  processedPages: int("processedPages").default(0).notNull(),
+  status: text("status", { enum: ["uploading", "processing", "completed", "failed"] }).default("uploading").notNull(),
+  totalPages: integer("totalPages").default(0).notNull(),
+  processedPages: integer("processedPages").default(0).notNull(),
   /** Enable post-OCR text cleanup to remove common artifacts */
-  enableCleanup: mysqlEnum("enableCleanup", ["yes", "no"]).default("no").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  enableCleanup: text("enableCleanup", { enum: ["yes", "no"] }).default("no").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type Project = typeof projects.$inferSelect;
@@ -50,35 +25,35 @@ export type InsertProject = typeof projects.$inferInsert;
  * Pages table - represents individual book page images and their OCR results
  * Each page belongs to a project and contains the extracted text and metadata
  */
-export const pages = mysqlTable("pages", {
-  id: int("id").autoincrement().primaryKey(),
-  projectId: int("projectId").notNull(),
+export const pages = sqliteTable("pages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("projectId").notNull(),
   /** Original filename of the uploaded image */
-  filename: varchar("filename", { length: 255 }).notNull(),
-  /** S3 storage key for the uploaded image */
-  imageKey: varchar("imageKey", { length: 512 }).notNull(),
-  /** Public URL to access the image */
+  filename: text("filename").notNull(),
+  /** Local file path for the uploaded image (desktop app uses local storage) */
+  imageKey: text("imageKey").notNull(),
+  /** File URL to access the image */
   imageUrl: text("imageUrl").notNull(),
   /** Detected page number (can be Arabic numeral, Roman numeral, or null if not detected) */
-  detectedPageNumber: varchar("detectedPageNumber", { length: 50 }),
+  detectedPageNumber: text("detectedPageNumber"),
   /** Numeric sort order based on detected page number */
-  sortOrder: int("sortOrder"),
+  sortOrder: integer("sortOrder"),
   /** OCR processing status */
-  status: mysqlEnum("status", ["pending", "processing", "completed", "failed"]).default("pending").notNull(),
+  status: text("status", { enum: ["pending", "processing", "completed", "failed"] }).default("pending").notNull(),
   /** Extracted text content from OCR */
   extractedText: text("extractedText"),
   /** OCR confidence score (0-100) indicating the reliability of the extracted text */
-  confidenceScore: int("confidenceScore"),
+  confidenceScore: integer("confidenceScore"),
   /** Placement confidence (0-100) indicating how certain the page placement is */
-  placementConfidence: int("placementConfidence").default(100),
+  placementConfidence: integer("placementConfidence").default(100),
   /** Whether this page needs user validation for placement */
-  needsValidation: mysqlEnum("needsValidation", ["yes", "no"]).default("no").notNull(),
-  /** Structured formatting information (paragraphs, headings, lists, etc.) */
-  formattingData: json("formattingData"),
+  needsValidation: text("needsValidation", { enum: ["yes", "no"] }).default("no").notNull(),
+  /** Structured formatting information (paragraphs, headings, lists, etc.) stored as JSON text */
+  formattingData: text("formattingData"),
   /** Error message if OCR failed */
   errorMessage: text("errorMessage"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 export type Page = typeof pages.$inferSelect;
