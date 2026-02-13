@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1770903595940,
+      "tag": "0000_amazing_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1770903805858,
+      "tag": "0001_sour_moon_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1770913646053,
+      "tag": "0002_old_alex_wilder",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1770914283917,
+      "tag": "0003_natural_gladiator",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1770927203866,
+      "tag": "0004_useful_red_shift",
+      "breakpoints": true
+    }
+  ]
+}
