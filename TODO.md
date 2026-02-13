@@ -40,28 +40,28 @@
 - [ ] Test app without authentication (deferred to Phase 7)
 
 ## Phase 5: Electron Main Process Setup
-- [ ] Install electron and electron-builder packages
-- [ ] Create electron/main.js (main process entry point)
-- [ ] Create electron/preload.js (secure IPC bridge)
-- [ ] Set up BrowserWindow configuration
-- [ ] Implement Express server startup in main process
-- [ ] Configure IPC channels for OCR communication
-- [ ] Set up menu bar and application menu
-- [ ] Implement window state management
-- [ ] Add app lifecycle handlers (ready, quit, etc.)
-- [ ] Configure dev tools for development mode
+- [x] Install electron and electron-builder packages
+- [x] Create electron/main.js (main process entry point)
+- [x] Create electron/preload.js (secure IPC bridge)
+- [x] Set up BrowserWindow configuration
+- [x] Implement Express server startup in main process
+- [x] Configure IPC channels for file dialogs
+- [x] Set up menu bar and application menu
+- [x] Implement window state management
+- [x] Add app lifecycle handlers (ready, quit, etc.)
+- [x] Configure dev tools for development mode
 
 ## Phase 6: Electron Packaging Configuration
-- [ ] Create electron-builder.yml configuration
-- [ ] Configure macOS DMG packaging settings
-- [ ] Configure Windows NSIS installer settings
-- [ ] Design and add application icons (Mac .icns, Windows .ico)
-- [ ] Set up file associations for project files
-- [ ] Configure Python runtime bundling
-- [ ] Configure SQLite database bundling
-- [ ] Set up code signing (optional)
-- [ ] Configure auto-updater (optional)
-- [ ] Add build scripts to package.json
+- [x] Create electron-builder.yml configuration
+- [x] Configure macOS DMG packaging settings
+- [x] Configure Windows NSIS installer settings
+- [ ] Design and add application icons (Mac .icns, Windows .ico) - Placeholder created
+- [ ] Set up file associations for project files - Not needed
+- [x] Configure Python runtime bundling
+- [x] Configure SQLite database bundling
+- [x] Set up macOS entitlements for code signing
+- [x] Configure auto-updater (GitHub releases)
+- [x] Add build scripts to package.json
 
 ## Phase 7: Testing & Quality Assurance
 - [ ] Test on macOS (development mode)

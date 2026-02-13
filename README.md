@@ -1,314 +1,168 @@
-# Book Page Converter
+# Book Page Converter - Desktop Application
 
-A sophisticated web application that converts scanned book pages into searchable, editable digital documents using AI-powered OCR technology.
+A standalone desktop application for converting scanned book pages to editable text using OCR. Works completely offline with no internet connection required.
 
-## Features
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-### 🎯 Core Functionality
+## ✨ Features
 
-- **Multi-Image Upload**: Drag-and-drop interface supporting PNG, JPG, and WEBM formats
-- **AI-Powered OCR**: Vision LLM integration for accurate text extraction
-- **Smart Page Detection**: Automatically detects page numbers in Arabic numerals (1, 2, 3) or Roman numerals (i, ii, iii)
-- **Intelligent Ordering**: Pages are automatically sorted based on detected page numbers, regardless of upload sequence
-- **Format Preservation**: Maintains document structure including headings, paragraphs, lists, and text formatting (bold, italic)
-- **Multi-Format Export**: Download converted documents as PDF, DOCX, Markdown, or plain text
-- **Post-OCR Text Cleanup**: Automatically remove common OCR artifacts (duplicate spaces, stray punctuation, formatting inconsistencies)
-- **Retry OCR Processing**: Reprocess individual pages with improved extraction for incomplete or low-quality results
-- **Cleanup Preview**: Side-by-side comparison of original vs cleaned text before applying changes
+- **🔒 Complete Offline Operation**: No internet required - all processing happens locally
+- **🎯 High-Accuracy OCR**: Powered by PaddleOCR for excellent text extraction
+- **📄 Multi-Format Export**: PDF, DOCX, Markdown, and plain text
+- **🔢 Smart Page Detection**: Automatic page number recognition and sorting
+- **✨ Text Cleanup**: Removes OCR artifacts and formatting issues
+- **📁 Project Management**: Organize multiple books with page reordering
+- **⚡ Batch Processing**: Upload and process multiple pages simultaneously
+- **🔐 Privacy First**: No accounts, no cloud, no data collection
+- **💾 Local Storage**: SQLite database - your data stays on your computer
 
-### 🎨 Design
+## 📋 System Requirements
 
-- Elegant warm ivory and burgundy color palette
-- Responsive design optimized for all devices
-- Smooth transitions and micro-interactions
-- Professional typography using Inter font family
+### macOS
+- macOS 10.13 (High Sierra) or later
+- 4 GB RAM minimum (8 GB recommended)
+- 2 GB free disk space
 
-## Technology Stack
+### Windows
+- Windows 10 or later (64-bit)
+- 4 GB RAM minimum (8 GB recommended)
+- 2 GB free disk space
 
-### Backend
-- **Framework**: Express.js with tRPC for type-safe API
-- **Database**: MySQL/TiDB with Drizzle ORM
-- **OCR**: Vision-capable LLM for text extraction
-- **Storage**: S3-compatible object storage
-- **Document Generation**: 
-  - PDF: pdf-lib
-  - DOCX: docx
-  - Markdown: Custom formatter
-  - Text: Plain text export
+### Linux
+- Ubuntu 20.04 or later / equivalent
+- 4 GB RAM minimum (8 GB recommended)
+- 2 GB free disk space
 
-### Frontend
-- **Framework**: React 19 with TypeScript
-- **Styling**: Tailwind CSS 4
-- **UI Components**: shadcn/ui with Radix UI primitives
-- **State Management**: TanStack Query (via tRPC)
-- **Routing**: Wouter
+## 📥 Installation
 
-## Project Structure
+### macOS
 
-```
-book-page-converter/
-├── client/                 # Frontend React application
-│   ├── src/
-│   │   ├── pages/         # Page components
-│   │   │   ├── Home.tsx           # Landing page and project list
-│   │   │   ├── NewProject.tsx     # Project creation and upload
-│   │   │   └── ProjectDetail.tsx  # Project view and export
-│   │   ├── components/    # Reusable UI components
-│   │   ├── lib/           # tRPC client setup
-│   │   └── index.css      # Global styles and theme
-│   └── index.html
-├── server/                # Backend Express + tRPC
-│   ├── routers.ts        # tRPC API routes
-│   ├── db.ts             # Database helpers
-│   ├── ocrService.ts     # OCR processing logic
-│   ├── exportService.ts  # Document export functions
-│   └── storage.ts        # S3 storage integration
-├── drizzle/              # Database schema and migrations
-│   └── schema.ts
-└── shared/               # Shared types and constants
-```
+1. Download `Book-Page-Converter-2.0.0.dmg` from [Releases](https://github.com/rstamps01/image-to-text-app/releases)
+2. Open the DMG file
+3. Drag "Book Page Converter" to Applications
+4. Launch from Applications (right-click → Open first time)
 
-## User Workflow
+### Windows
 
-### 1. Create a Project
-- Navigate to the home page
-- Click "New Project"
-- Enter a title and optional description
+1. Download `Book-Page-Converter-Setup-2.0.0.exe` from [Releases](https://github.com/rstamps01/image-to-text-app/releases)
+2. Run the installer
+3. Follow the wizard
+4. Launch from Start Menu or Desktop
 
-### 2. Upload Book Pages
-- Drag and drop images or click to select files
-- Multiple images can be uploaded at once
-- Supported formats: PNG, JPG, WEBM
+### Linux
 
-### 3. Automatic Processing
-- Each image is automatically uploaded to secure storage
-- Vision AI performs OCR to extract text
-- Page numbers are detected and extracted
-- Formatting structure is preserved (headings, paragraphs, lists)
-- Pages are automatically ordered by detected page numbers
+1. Download `Book-Page-Converter-2.0.0.AppImage` from [Releases](https://github.com/rstamps01/image-to-text-app/releases)
+2. Make executable: `chmod +x Book-Page-Converter-2.0.0.AppImage`
+3. Run: `./Book-Page-Converter-2.0.0.AppImage`
 
-### 4. Review Results
-- View all uploaded pages in a grid layout
-- See detected page numbers for each page
-- Check processing status (completed, processing, failed)
-- Pages are displayed in correct order
+## 🚀 Quick Start
 
-### 5. Export Document
-- Select export format (PDF, DOCX, Markdown, or Text)
-- Click "Export" to generate the document
-- Download automatically starts
-- All completed pages are included in the export
+1. **Create Project** → `Cmd/Ctrl+N`
+2. **Add Pages** → Select images (JPG, PNG, TIFF)
+3. **Review** → Edit text, reorder pages
+4. **Export** → Choose format and save
 
-## API Endpoints
+## 📖 User Guide
 
-### Projects
-- `projects.create` - Create a new project
-- `projects.list` - List all user projects
-- `projects.get` - Get project details with pages
-- `projects.delete` - Delete a project
-- `projects.updateStatus` - Update project status
+See [USER_GUIDE.md](USER_GUIDE.md) for detailed instructions on:
+- Creating and managing projects
+- Understanding OCR processing
+- Using text cleanup features
+- Exporting in different formats
+- Keyboard shortcuts
+- Troubleshooting
 
-### Pages
-- `pages.upload` - Upload a page image
-- `pages.processOCR` - Process OCR for a page
-- `pages.reorder` - Reorder pages by detected numbers
-- `pages.updateOrder` - Manually update page order
+## 🛠️ Development
 
-### Export
-- `export.generate` - Generate document in specified format
+See [DEVELOPMENT.md](DEVELOPMENT.md) for:
+- Setting up development environment
+- Building from source
+- Running tests
+- Contributing guidelines
+- Technical architecture
 
-## Database Schema
+## 🔧 Technical Stack
 
-### Users Table
-- Standard authentication fields
-- Role-based access control
+- **Frontend**: React 19 + Tailwind CSS 4
+- **Backend**: Express 4 + tRPC 11
+- **Database**: SQLite (better-sqlite3)
+- **OCR**: PaddleOCR (Python)
+- **Desktop**: Electron 34
+- **Packaging**: electron-builder
 
-### Projects Table
-- `id` - Primary key
-- `userId` - Owner reference
-- `title` - Project name
-- `description` - Optional description
-- `enableCleanup` - Toggle for automatic text cleanup
-- `status` - uploading | processing | completed | failed
-- `totalPages` - Total number of pages
-- `processedPages` - Number of completed pages
-- `createdAt`, `updatedAt` - Timestamps
+## 📂 Data Storage
 
-### Pages Table
-- `id` - Primary key
-- `projectId` - Project reference
-- `filename` - Original filename
-- `imageKey` - S3 storage key
-- `imageUrl` - Public image URL
-- `detectedPageNumber` - Extracted page number
-- `sortOrder` - Numeric sort position
-- `status` - pending | processing | completed | failed
-- `extractedText` - OCR result text
-- `formattingData` - Structured formatting blocks (JSON)
-- `confidence` - OCR confidence score (0-100)
-- `placementConfidence` - Confidence in page placement (0-100)
-- `errorMessage` - Error details if failed
-- `createdAt`, `updatedAt` - Timestamps
+**macOS**: `~/Library/Application Support/Book Page Converter/`  
+**Windows**: `%APPDATA%/Book Page Converter/`  
+**Linux**: `~/.config/Book Page Converter/`
 
-## OCR Processing
+Contains:
+- `database.db` - All projects and pages
+- `uploads/` - Original images
+- `logs/` - Application logs
 
-### Page Number Detection
-The system intelligently detects page numbers in various formats:
+## 🔐 Privacy & Security
 
-- **Arabic numerals**: 1, 2, 3, 42, 123
-- **Roman numerals**: i, ii, iii, iv, v, x, xx, l, c
-- **Formatted**: Page 42, [123], (99), - 56 -
+- ✅ Works completely offline
+- ✅ No data collection or tracking
+- ✅ No accounts or cloud storage
+- ✅ All processing on your computer
+- ✅ Your documents never leave your machine
 
-### Text Extraction
-- High-accuracy OCR using vision-capable LLM
-- Preserves document structure
-- Identifies formatting (bold, italic)
-- Recognizes content types (headings, paragraphs, lists, quotes)
+## 🐛 Troubleshooting
 
-### Formatting Preservation
-Extracted content maintains:
-- Heading hierarchy (H1-H6)
-- Paragraph breaks
-- List items
-- Block quotes
-- Text styling (bold, italic)
+### OCR Issues
+- Use clear, well-lit images
+- Reduce resolution to ~2000px width
+- Enable cleanup for better results
+- Restart app if processing stalls
 
-## Export Formats
+### App Won't Start
+- **macOS**: Right-click → Open (first time)
+- **Windows**: Run as Administrator
+- **Linux**: Install libfuse2 if needed
 
-### PDF (.pdf)
-- Professional layout with proper spacing
-- Heading hierarchy with different font sizes
-- Page number headers
-- Word wrapping and pagination
+### Database Errors
+- Backup database file first
+- Delete `database.db` to reset (loses data!)
+- Check logs in application data folder
 
-### Word Document (.docx)
-- Native Microsoft Word format
-- Editable text with preserved formatting
-- Heading styles
-- List formatting
-- Page breaks between original pages
+## 📝 License
 
-### Markdown (.md)
-- Clean, readable markdown syntax
-- Heading markers (#, ##, ###)
-- List syntax (-)
-- Bold (**text**) and italic (*text*)
-- Page separators (---)
+MIT License - see [LICENSE](LICENSE)
 
-### Plain Text (.txt)
-- Simple text format
-- Page separators with page numbers
-- No formatting markup
-- Maximum compatibility
+## 💬 Support
 
-## Testing
+- **Issues**: [GitHub Issues](https://github.com/rstamps01/image-to-text-app/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/rstamps01/image-to-text-app/discussions)
 
-The project includes comprehensive test coverage:
+## 📜 Changelog
 
-### Backend Tests
-- Project CRUD operations
-- User authorization
-- Page number extraction (Arabic and Roman numerals)
-- OCR service functionality
-- Authentication flows
+### v2.0.0 - Desktop Release
+- ✨ Complete rewrite as standalone desktop app
+- 🔄 Replaced cloud LLM with local PaddleOCR
+- 💾 Migrated MySQL → SQLite
+- 🔓 Removed authentication (single-user)
+- 📦 Electron packaging for Mac/Windows/Linux
+- ✨ Enhanced text cleanup
+- 🔄 Retry functionality for failed pages
 
-### Running Tests
-```bash
-pnpm test
-```
+### v1.0.0 - Web App
+- Initial web application release
+- Cloud-based OCR
+- Multi-user authentication
+- Project management
+- Export formats
 
-All tests pass successfully:
-- 3 test files
-- 27 test cases
-- 100% pass rate
+## 🙏 Acknowledgments
 
-## Development
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) - OCR engine
+- [Electron](https://www.electronjs.org/) - Desktop framework
+- [Drizzle ORM](https://orm.drizzle.team/) - Database
+- [tRPC](https://trpc.io/) - Type-safe APIs
 
-### Prerequisites
-- Node.js 22+
-- pnpm package manager
-- MySQL/TiDB database
-- S3-compatible storage
+---
 
-### Setup
-```bash
-# Install dependencies
-pnpm install
-
-# Run database migrations
-pnpm db:push
-
-# Start development server
-pnpm dev
-```
-
-### Environment Variables
-All required environment variables are automatically injected by the Manus platform:
-- Database connection
-- OAuth configuration
-- Storage credentials
-- LLM API access
-
-## Security
-
-- User authentication via Manus OAuth
-- Row-level security (users can only access their own projects)
-- Secure file storage with S3
-- Input validation on all endpoints
-- Type-safe API with tRPC
-
-## Performance
-
-- Lazy loading for large project lists
-- Optimistic UI updates for better UX
-- Efficient image storage with CDN delivery
-- Parallel OCR processing for multiple pages
-- Automatic page reordering after processing
-
-## Recent Enhancements
-
-### Text Cleanup Feature
-The cleanup function removes common OCR artifacts to improve text quality:
-- Duplicate and excessive spaces
-- Misplaced punctuation (spaces before periods, commas)
-- Character confusion errors (l vs I, 0 vs O)
-- Inconsistent spacing around hyphens, dashes, and slashes
-- Malformed ellipses and quote marks
-- Excessive line breaks and formatting inconsistencies
-
-Cleanup can be enabled during project creation or toggled later. A preview feature shows before/after comparison using a sample page.
-
-### Retry OCR Processing
-Pages with incomplete or low-quality extraction can be reprocessed:
-- Improved OCR prompt emphasizes extracting every line from top to bottom
-- Special handling for table of contents pages with dotted leaders
-- Fixed data structure to properly support formatting blocks
-- "Retry OCR" button available in page preview modal for any completed page
-
-### Enhanced Page Management
-- Drag-and-drop page reordering with visual feedback
-- Side-by-side image and text preview with zoom controls
-- Editable text with save functionality
-- Confidence scores displayed on each page
-- Bulk retry for failed pages
-- Add pages to existing projects with intelligent placement
-
-## Future Enhancements
-
-Potential features for future versions:
-- Batch retry for all pages with improved extraction
-- Extraction quality metrics (character count, section count)
-- Auto-retry on low confidence scores
-- Table detection and extraction
-- Multi-column layout support
-- Language detection and translation
-- Collaborative projects with sharing
-- Custom cleanup rule configuration
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Support
-
-For issues, questions, or feature requests, please visit [https://help.manus.im](https://help.manus.im)
+**Made with ❤️ for book lovers and digital archivists**
