@@ -1,0 +1,108 @@
+appId: com.bookpageconverter.app
+productName: Book Page Converter
+copyright: Copyright © 2026
+
+# Directories
+directories:
+  buildResources: build
+  output: dist-electron
+
+# Files to include in the app
+files:
+  - dist/**/*
+  - server/**/*
+  - electron/**/*
+  - drizzle/**/*
+  - shared/**/*
+  - storage/**/*
+  - node_modules/**/*
+  - package.json
+  - requirements.txt
+  - "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+  - "!node_modules/*/{test,__tests__,tests,powered-test,example,examples}"
+  - "!node_modules/*.d.ts"
+  - "!node_modules/.bin"
+  - "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+  - "!.editorconfig"
+  - "!**/._*"
+  - "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}"
+  - "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}"
+  - "!**/{appveyor.yml,.travis.yml,circle.yml}"
+  - "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+
+# Extra resources to copy (Python runtime, OCR models, etc.)
+extraResources:
+  - from: "python-runtime"
+    to: "python-runtime"
+    filter:
+      - "**/*"
+
+# macOS configuration
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  icon: build/icon.icns
+  darkModeSupport: true
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  title: "${productName} ${version}"
+  icon: build/icon.icns
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380
+
+# Windows configuration
+win:
+  target:
+    - nsis
+    - portable
+  icon: build/icon.ico
+  artifactName: "${productName}-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: "${productName}"
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+
+# Linux configuration (optional)
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  icon: build/icon.png
+  synopsis: Convert book page images to text using OCR
+  description: Desktop application for converting scanned book pages to editable text formats using PaddleOCR.
+
+# Build configuration
+compression: normal
+asar: true
+asarUnpack:
+  - "**/*.node"
+  - "electron/ocr-service.py"
+  - "requirements.txt"
+
+# Publish configuration (for auto-updates)
+publish:
+  provider: github
+  owner: rstamps01
+  repo: image-to-text-app

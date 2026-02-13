@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "main": "electron/main.js",
   "scripts": {
+    "electron:dev",: "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\""electron:build": "npm run build && electron-builder",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:win": "npm run build && electron-builder --win",
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
     "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
@@ -70,6 +74,8 @@
     "lucide-react": "^0.453.0",
     "markdown-it": "^14.1.1",
     "better-sqlite3": "^11.8.1",
+    "concurrently": "^9.1.0",
+    "wait-on": "^8.0.1",
     "nanoid": "^5.1.5",
     "next-themes": "^0.4.6",
     "pdf-lib": "^1.17.1",
@@ -115,6 +121,7 @@
     "vitest": "^2.1.4",
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
+    "electron-rebuild": "^3.2.9",
     "@types/better-sqlite3": "^7.6.12"
   },
   "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af",

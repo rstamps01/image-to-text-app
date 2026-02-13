@@ -7,39 +7,37 @@
 - [x] Create TODO.md task tracker
 
 ## Phase 2: Database Migration to SQLite
-- [ ] Install better-sqlite3 package
-- [ ] Update package.json dependencies (remove MySQL packages)
-- [ ] Update drizzle.config.ts for SQLite
-- [ ] Modify drizzle/schema.ts for SQLite dialect
-- [ ] Update server/db.ts connection logic for SQLite
-- [ ] Remove DATABASE_URL environment variable references
-- [ ] Test database migrations with SQLite
-- [ ] Verify all CRUD operations work with SQLite
+- [x] Install better-sqlite3 package
+- [x] Update package.json dependencies (remove MySQL packages)
+- [x] Update drizzle.config.ts for SQLite
+- [x] Modify drizzle/schema.ts for SQLite dialect
+- [x] Update server/db.ts connection logic for SQLite
+- [x] Remove DATABASE_URL environment variable references
+- [x] Test database migrations with SQLite
+- [x] Verify all CRUD operations work with SQLite
 
 ## Phase 3: PaddleOCR Integration
-- [ ] Create Python virtual environment setup
-- [ ] Write electron/ocr-service.py with PaddleOCR
-- [ ] Install PaddleOCR and dependencies
-- [ ] Update server/ocrService.ts to call Python service via child_process
-- [ ] Implement proper error handling for OCR failures
-- [ ] Test OCR accuracy with sample images
-- [ ] Compare performance with cloud LLM version
-- [ ] Optimize OCR parameters for best accuracy
+- [x] Create Python virtual environment setup
+- [x] Write electron/ocr-service.py with PaddleOCR
+- [x] Install PaddleOCR and dependencies
+- [x] Update server/ocrService.ts to call Python service via child_process
+- [x] Implement proper error handling for OCR failures
+- [ ] Test OCR accuracy with sample images (deferred to Phase 7)
+- [ ] Compare performance with cloud LLM version (deferred to Phase 7)
+- [ ] Optimize OCR parameters for best accuracy (deferred to Phase 7)
 
 ## Phase 4: Remove Authentication
-- [ ] Remove server/_core/oauth.ts
-- [ ] Remove server/_core/auth.ts
-- [ ] Update server/_core/context.ts (remove user context)
-- [ ] Remove protectedProcedure from server/routers.ts
-- [ ] Update all tRPC procedures to publicProcedure
-- [ ] Remove user table from drizzle/schema.ts
-- [ ] Remove auth.me and auth.logout routes
-- [ ] Update client/src/contexts/AuthContext.tsx (remove or simplify)
-- [ ] Remove login/logout UI components
-- [ ] Update client/src/pages/Home.tsx (remove auth checks)
-- [ ] Remove OAUTH_* environment variables
-- [ ] Update all database queries (remove userId filters)
-- [ ] Test app without authentication
+- [x] Remove server/_core/oauth.ts
+- [x] Remove server/_core/context.ts (removed user context)
+- [x] Remove protectedProcedure from server/routers.ts
+- [x] Update all tRPC procedures to publicProcedure
+- [x] Remove user table from drizzle/schema.ts
+- [x] Remove auth routes from server
+- [x] Update client auth hook (simplified to return mock user)
+- [x] Update server/_core/index.ts (removed OAuth routes)
+- [x] Remove OAUTH_* environment variable dependencies
+- [x] Update all database queries (removed userId filters)
+- [ ] Test app without authentication (deferred to Phase 7)
 
 ## Phase 5: Electron Main Process Setup
 - [ ] Install electron and electron-builder packages
